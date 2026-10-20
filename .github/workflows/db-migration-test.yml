@@ -10,6 +10,7 @@ concurrency:
 jobs:
   db-migration-test-postgres:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -26,7 +27,7 @@ jobs:
           cache-dependency-glob: api/uv.lock
 
       - name: Install dependencies
-        run: uv sync --project api
+        run: uv sync --locked --project api
       - name: Ensure Offline migration are supported
         run: |
           # upgrade
@@ -60,6 +61,7 @@ jobs:
 
   db-migration-test-mysql:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -76,7 +78,7 @@ jobs:
           cache-dependency-glob: api/uv.lock
 
       - name: Install dependencies
-        run: uv sync --project api
+        run: uv sync --locked --project api
       - name: Ensure Offline migration are supported
         run: |
           # upgrade

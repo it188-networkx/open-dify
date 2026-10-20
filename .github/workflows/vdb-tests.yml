@@ -9,13 +9,56 @@ concurrency:
 
 jobs:
   test:
-    name: VDB Tests
+    name: VDB ${{ matrix.store }} (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
-        python-version:
-          - "3.11"
-          - "3.12"
+        python-version: ["3.11", "3.12"]
+        store: [chroma, milvus, pgvecto_rs, pgvector, qdrant, weaviate, elasticsearch, couchbase, oceanbase, compatibility]
+        include:
+          - store: chroma
+            tests: api/tests/integration_tests/vdb/chroma
+            services: |
+              chroma
+          - store: milvus
+            tests: api/tests/integration_tests/vdb/milvus
+            services: |
+              etcd
+              minio
+              milvus-standalone
+          - store: pgvecto_rs
+            tests: api/tests/integration_tests/vdb/pgvecto_rs
+            services: |
+              pgvecto-rs
+          - store: pgvector
+            tests: api/tests/integration_tests/vdb/pgvector
+            services: |
+              pgvector
+          - store: qdrant
+            tests: api/tests/integration_tests/vdb/qdrant
+            services: |
+              qdrant
+          - store: weaviate
+            tests: api/tests/integration_tests/vdb/weaviate
+            services: |
+              weaviate
+          - store: elasticsearch
+            tests: api/tests/integration_tests/vdb/elasticsearch
+            services: |
+              elasticsearch
+          - store: couchbase
+            tests: api/tests/integration_tests/vdb/couchbase
+            services: |
+              couchbase-server
+          - store: oceanbase
+            tests: api/tests/integration_tests/vdb/oceanbase
+            services: |
+              oceanbase
+          - store: compatibility
+            tests: api/tests/integration_tests/vdb/vikingdb api/tests/integration_tests/vdb/baidu api/tests/integration_tests/vdb/tcvectordb api/tests/integration_tests/vdb/upstash api/tests/integration_tests/vdb/tidb_vector api/tests/integration_tests/vdb/huawei
+            services: ""
 
     steps:
       - name: Checkout code
@@ -41,7 +84,7 @@ jobs:
         run: uv lock --project api --check
 
       - name: Install dependencies
-        run: uv sync --project api --dev
+        run: uv sync --locked --project api --dev
 
       - name: Set up dotenvs
         run: |
@@ -51,40 +94,30 @@ jobs:
       - name: Expose Service Ports
         run: sh .github/workflows/expose_service_ports.sh
 
-#      - name: Set up Vector Store (TiDB)
-#        uses: hoverkraft-tech/compose-action@v2.0.2
-#        with:
-#          compose-file: docker/tidb/docker-compose.yaml
-#          services: |
-#            tidb
-#            tiflash
+      - name: Build the unavailable MinIO fixture from pinned upstream source
+        if: matrix.store == 'milvus'
+        run: |
+          docker build -f .github/scripts/minio-ci.Dockerfile -t dify-ci-minio:2023-03-20 .github/scripts
+          yq eval '.services.minio.image = "dify-ci-minio:2023-03-20"' -i docker/docker-compose.yaml
 
-      - name: Set up Vector Stores (Weaviate, Qdrant, PGVector, Milvus, PgVecto-RS, Chroma, MyScale, ElasticSearch, Couchbase, OceanBase)
+      - name: Start isolated vector store
+        if: matrix.services != ''
         uses: hoverkraft-tech/compose-action@v2.0.2
         with:
-          compose-file: |
-            docker/docker-compose.yaml
-          services: |
-            weaviate
-            qdrant
-            couchbase-server
-            etcd
-            minio
-            milvus-standalone
-            pgvecto-rs
-            pgvector
-            chroma
-            elasticsearch
-            oceanbase
+          compose-file: docker/docker-compose.yaml
+          services: ${{ matrix.services }}
+
+      - name: Wait for OceanBase SQL readiness
+        if: matrix.store == 'oceanbase'
+        run: docker compose -f docker/docker-compose.yaml up -d --wait --wait-timeout 300 oceanbase
 
       - name: setup test config
         run: |
-          echo $(pwd)
-          ls -lah .
           cp api/tests/integration_tests/.env.example api/tests/integration_tests/.env
 
-#      - name: Check VDB Ready (TiDB)
-#        run: uv run --project api python api/tests/integration_tests/vdb/tidb_vector/check_tiflash_ready.py
-
-      - name: Test Vector Stores
-        run: uv run --project api bash dev/pytest/pytest_vdb.sh
+      - name: Test vector store
+        env:
+          VDB_TEST_PATHS: ${{ matrix.tests }}
+        run: |
+          read -r -a tests <<< "$VDB_TEST_PATHS"
+          uv run --project api pytest --timeout "${PYTEST_TIMEOUT:-180}" "${tests[@]}"

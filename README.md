@@ -233,3 +233,9 @@ To protect your privacy, please avoid posting security issues on GitHub. Instead
 ## License
 
 This repository is licensed under the [Dify Open Source License](LICENSE), based on Apache 2.0 with additional conditions.
+
+## Fork PR validation
+
+The required `PR checks` gate waits for every selected API, web, style, vector-store, and database migration check. Unknown paths run the full set; API/web changes select their respective suites, while shared backend configuration and dependency changes also run database checks. Selected workflows run their checks without a second path filter. Vector stores run in separate matrix jobs so unrelated databases do not compete for one runner's memory. Existing test paths and Python version coverage are preserved.
+
+Native GitHub auto-merge waits for the required gate. `.actrc` supports local workflow execution; Python integration tests use the CI container environment. Publication workflows are unchanged.
