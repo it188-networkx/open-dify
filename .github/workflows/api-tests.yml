@@ -11,6 +11,7 @@ jobs:
   test:
     name: API Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -37,7 +38,7 @@ jobs:
         run: uv lock --project api --check
 
       - name: Install dependencies
-        run: uv sync --project api --dev
+        run: uv sync --locked --project api --dev
 
       - name: Run dify config tests
         run: uv run --project api dev/pytest/pytest_config_tests.py
@@ -85,9 +86,9 @@ jobs:
           TOTAL_COVERAGE=$(python -c 'import json; print(json.load(open("coverage.json"))["totals"]["percent_covered_display"])')
 
           # Create a detailed coverage summary
-          echo "### Test Coverage Summary :test_tube:" >> $GITHUB_STEP_SUMMARY
-          echo "Total Coverage: ${TOTAL_COVERAGE}%" >> $GITHUB_STEP_SUMMARY
           {
+            echo "### Test Coverage Summary :test_tube:"
+            echo "Total Coverage: ${TOTAL_COVERAGE}%"
             echo ""
             echo "<details><summary>File-level coverage (click to expand)</summary>"
             echo ""
@@ -95,4 +96,4 @@ jobs:
             uv run --project api coverage report -m
             echo '```'
             echo "</details>"
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"

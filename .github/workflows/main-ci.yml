@@ -2,7 +2,7 @@ name: Main CI Pipeline
 
 on:
   pull_request:
-    branches: ["main"]
+  workflow_dispatch:
   push:
     branches: ["main"]
 
@@ -21,6 +21,7 @@ jobs:
   check-changes:
     name: Check Changed Files
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       api-changed: ${{ steps.changes.outputs.api }}
       web-changed: ${{ steps.changes.outputs.web }}
@@ -28,26 +29,14 @@ jobs:
       migration-changed: ${{ steps.changes.outputs.migration }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
-        id: changes
         with:
-          filters: |
-            api:
-              - 'api/**'
-              - 'docker/**'
-              - '.github/workflows/api-tests.yml'
-            web:
-              - 'web/**'
-              - '.github/workflows/web-tests.yml'
-            vdb:
-              - 'api/core/rag/datasource/**'
-              - 'docker/**'
-              - '.github/workflows/vdb-tests.yml'
-              - 'api/uv.lock'
-              - 'api/pyproject.toml'
-            migration:
-              - 'api/migrations/**'
-              - '.github/workflows/db-migration-test.yml'
+          fetch-depth: 0
+          persist-credentials: false
+      - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - id: changes
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+        run: python3 .github/scripts/ci.py plan
 
   # Run tests in parallel
   api-tests:
@@ -64,6 +53,11 @@ jobs:
 
   style-check:
     name: Style Check
+    needs: check-changes
+    if: needs.check-changes.outputs.api-changed == 'true' || needs.check-changes.outputs.web-changed == 'true'
+    with:
+      api: ${{ needs.check-changes.outputs.api-changed == 'true' }}
+      web: ${{ needs.check-changes.outputs.web-changed == 'true' }}
     uses: ./.github/workflows/style.yml
 
   vdb-tests:
@@ -77,3 +71,17 @@ jobs:
     needs: check-changes
     if: needs.check-changes.outputs.migration-changed == 'true'
     uses: ./.github/workflows/db-migration-test.yml
+
+  check:
+    name: PR checks
+    needs: [check-changes, api-tests, web-tests, style-check, vdb-tests, db-migration-test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: python3 .github/scripts/ci.py gate
