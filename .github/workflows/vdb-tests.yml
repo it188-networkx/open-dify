@@ -107,6 +107,10 @@ jobs:
           compose-file: docker/docker-compose.yaml
           services: ${{ matrix.services }}
 
+      - name: Wait for OceanBase SQL readiness
+        if: matrix.store == 'oceanbase'
+        run: docker compose -f docker/docker-compose.yaml up -d --wait --wait-timeout 300 oceanbase
+
       - name: setup test config
         run: |
           cp api/tests/integration_tests/.env.example api/tests/integration_tests/.env
