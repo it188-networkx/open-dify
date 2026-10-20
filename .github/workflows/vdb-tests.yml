@@ -94,6 +94,12 @@ jobs:
       - name: Expose Service Ports
         run: sh .github/workflows/expose_service_ports.sh
 
+      - name: Build the unavailable MinIO fixture from pinned upstream source
+        if: matrix.store == 'milvus'
+        run: |
+          docker build -f .github/scripts/minio-ci.Dockerfile -t dify-ci-minio:2023-03-20 .github/scripts
+          yq eval '.services.minio.image = "dify-ci-minio:2023-03-20"' -i docker/docker-compose.yaml
+
       - name: Start isolated vector store
         if: matrix.services != ''
         uses: hoverkraft-tech/compose-action@v2.0.2
